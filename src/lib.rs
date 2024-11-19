@@ -122,6 +122,10 @@ pub(crate) mod test {
             self.key.as_ref().map(|k| k.as_bytes())
         }
 
+        fn partition(&self) -> Option<i32> {
+            None
+        }
+
         fn make_span(&self) -> tracing::Span {
             tracing::info_span!(
                 "consumer",
