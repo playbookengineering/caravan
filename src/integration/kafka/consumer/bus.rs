@@ -71,6 +71,8 @@ impl<C: ConsumerContext> Stream for RdKafkaMessageStream<C> {
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.stream.poll_next(cx).map_ok(|message| unsafe {
+            println!("poll_next: partition {}, offset: {}", message.partition(), message.offset());
+
             RdKafkaOwnedMessage::new(&self.consumer, message, Arc::clone(&self.commit_queue))
         })
     }
@@ -104,6 +106,8 @@ impl<C: ConsumerContext> RdKafkaOwnedMessage<C> {
             cq.lock()
                 .expect("Mutex poisoned")
                 .push(tp, message.offset());
+
+            tracing::debug!("commit [partition: {:?}], reserved: {}, pointer: {:?}", message.partition(), message.offset(), Arc::as_ptr(consumer));
         }
 
         let consumer = Arc::clone(consumer);
@@ -159,6 +163,8 @@ impl<C: ConsumerContext> RdKafkaOwnedMessage<C> {
                 let mut cq = cq.lock().expect("Poisoned mutex");
 
                 if let Some(offset) = cq.commit(tp, offset) {
+                    tracing::debug!("commit [partition: {:?}], executing {}", partition, offset);
+
                     let mut tpl = TopicPartitionList::with_capacity(1);
                     tpl.add_partition_offset(
                         topic,
@@ -166,6 +172,8 @@ impl<C: ConsumerContext> RdKafkaOwnedMessage<C> {
                         rdkafka::Offset::Offset(offset + 1),
                     )?;
                     self.consumer.commit(&tpl, CommitMode::Async)?;
+                } else {
+                    tracing::debug!("commit [partition: {:?}], skipping {}", partition, offset);
                 }
             }
         }
@@ -244,6 +252,10 @@ impl<C: ConsumerContext + 'static> IncomingMessage for RdKafkaOwnedMessage<C> {
 
     fn key(&self) -> Option<&[u8]> {
         self.message.key()
+    }
+
+    fn partition(&self) -> Option<i32> {
+       Some(self.message.partition())
     }
 
     async fn ack(&self) -> Result<(), Self::Error> {
@@ -403,5 +415,50 @@ mod test {
         // 4. heap after commit: {3: true}, return last element leaving heap empty
         assert_eq!(cq.commit(tp.clone(), 3), Some(3));
         assert!(cq.topic_partition_queue.get(&tp).unwrap().is_empty());
+    }
+
+
+    #[test]
+    fn commit_queue_out_of_order_2() {
+        let mut cq = CommitQueue::default();
+
+        let tp = TopicPartition {
+            topic: "test".to_owned(),
+            partition: 0,
+        };
+
+        // kafka messages are read in order
+        for i in 0..10 {
+            cq.push(tp.clone(), i);
+        }
+
+        for i in 1..10 {
+            assert_eq!(cq.commit(tp.clone(), i), None);
+        }
+
+        assert_eq!(cq.commit(tp.clone(), 0), Some(9));
+        assert!(cq.topic_partition_queue.get(&tp).unwrap().is_empty());
+    }
+
+    #[test]
+    fn commit_queue_out_of_order_3() {
+        let mut cq = CommitQueue::default();
+
+        let tp = TopicPartition {
+            topic: "test".to_owned(),
+            partition: 0,
+        };
+
+        // kafka messages are read in order
+        for i in 10023..10055 {
+            cq.push(tp.clone(), i);
+        }
+
+
+        assert_eq!(cq.commit(tp.clone(), 10112), None);
+        assert_eq!(cq.commit(tp.clone(), 10121), None);
+        assert_eq!(cq.commit(tp.clone(), 10110), None);
+        assert_eq!(cq.commit(tp.clone(), 10105), None);
+        assert_eq!(cq.commit(tp.clone(), 10105), None);
     }
 }

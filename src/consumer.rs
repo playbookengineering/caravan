@@ -38,7 +38,7 @@ pub use message_bus::{IncomingMessage, MessageBus};
 pub use sentinel::Sentinel;
 #[cfg(feature = "unstable-features")]
 pub use task_local::TaskLocal;
-pub use worker::{FixedPoolConfig, KeyRoutedPoolConfig, WorkerPoolConfig};
+pub use worker::{FixedPoolConfig, KeyRoutedPoolConfig, PartitionRoutedPoolConfig, WorkerPoolConfig};
 
 pub(crate) use extension::Extensions;
 pub(crate) use hook::Hooks;

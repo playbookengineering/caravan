@@ -30,6 +30,8 @@ pub trait IncomingMessage: Send + Sync + 'static {
 
     fn key(&self) -> Option<&[u8]>;
 
+    fn partition(&self) -> Option<i32>;
+
     fn make_span(&self) -> tracing::Span;
 
     /// Acknowledge message and dequeue

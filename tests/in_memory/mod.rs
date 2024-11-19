@@ -72,6 +72,10 @@ impl IncomingMessage for InMemoryMessage {
         &self.0.payload
     }
 
+    fn partition(&self) -> Option<i32> {
+        None
+    }
+
     fn key(&self) -> Option<&[u8]> {
         self.0.key.as_ref().map(|k| &k[..])
     }
